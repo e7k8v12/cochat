@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Message struct {
@@ -14,13 +15,18 @@ type Message struct {
 	message string
 }
 type Client struct {
-	address string
-	conn    net.Conn
+	address  string
+	conn     net.Conn
+	name     string
+	sendChan chan Message
 }
 
-var muConnections sync.Mutex = sync.Mutex{}
-var connections map[string]*Client = make(map[string]*Client)
-var brChan chan Message = make(chan Message, 1000)
+var (
+	muConnections = sync.Mutex{}
+	connections   = make(map[string]*Client)
+	brChan        = make(chan Message, 10000)
+	wg            = sync.WaitGroup{}
+)
 
 func (mess *Message) String() string {
 	return mess.name + ":\t" + mess.message
@@ -34,20 +40,30 @@ func main() {
 		panic(err)
 	}
 	fmt.Printf("Console chat server started at %v\n", listener.Addr().String())
-	MainLoop(listener)
+	go sendAll()
+	wg.Add(1)
+	go MainLoop(listener)
+	wg.Wait()
 }
 
 func MainLoop(listener net.Listener) {
-	go sendAll()
 	for {
 		conn, err := listener.Accept()
+
 		if err != nil {
-			panic(err)
+			brChan <- Message{
+				name:    "Server",
+				message: "Server shut down.",
+			}
+			time.Sleep(time.Second)
+			fmt.Printf("after accept: %v\n", err)
+			wg.Done()
+			break
 		}
 		connectionAddress := conn.RemoteAddr().String()
 		muConnections.Lock()
-		connections[connectionAddress] = &Client{connectionAddress, conn}
-		go connections[connectionAddress].handleConnection(conn)
+		connections[connectionAddress] = &Client{address: connectionAddress, conn: conn, sendChan: make(chan Message, 10)}
+		go connections[connectionAddress].handleConnection(conn, listener)
 		muConnections.Unlock()
 	}
 }
@@ -61,18 +77,22 @@ func sendAll() {
 	for mess := range brChan {
 		muConnections.Lock()
 		for _, client := range connections {
-			go func(client *Client, mess *Message) {
-				_, err := fmt.Fprintln(client.conn, mess)
+			wg.Add(1)
+			client.sendChan <- mess
+			go func(client *Client) {
+				mess := <-client.sendChan
+				_, err := fmt.Fprintf(client.conn, "%v\n", &mess)
 				if err != nil {
 					client.deleteConnection()
 				}
-			}(client, &mess)
+				wg.Done()
+			}(client)
 		}
 		muConnections.Unlock()
 	}
 }
 
-func (client *Client) handleConnection(conn net.Conn) {
+func (client *Client) handleConnection(conn net.Conn, listener net.Listener) {
 	defer func() {
 		if err := recover(); err != nil {
 			client.deleteConnection()
@@ -84,10 +104,11 @@ func (client *Client) handleConnection(conn net.Conn) {
 	name := ""
 	if scanner.Scan() {
 		name = scanner.Text()[len("login:"):]
-		fmt.Fprintf(conn, "Hello, %v\n", name)
 	}
 	defer conn.Close()
-	fmt.Printf("%v at %+v connected\n", name, addr)
+	client.name = name
+	fmt.Printf("%v %v connected\n", name, addr)
+	brChan <- Message{name, "*connected*"}
 
 	for scanner.Scan() {
 		text := scanner.Text()
@@ -102,12 +123,24 @@ func (client *Client) handleConnection(conn net.Conn) {
 			muConnections.Lock()
 			fmt.Fprintf(conn, "%v\n", len(connections))
 			muConnections.Unlock()
+		} else if strings.ToLower(text) == "#quit_server" {
+			listener.Close()
+		} else if strings.ToLower(text) == "#list" {
+			mess := ""
+			muConnections.Lock()
+			for _, cli := range connections {
+				mess += cli.name + " " + cli.address + "\n"
+			}
+			muConnections.Unlock()
+			conn.Write([]byte(mess))
 		} else if text != "" {
-			fmt.Println(name, "enters", text)
+			fmt.Printf("%v enters '%v'\n", name, text)
 			brChan <- Message{name: name, message: text}
 		}
 
 	}
+	brChan <- Message{name, "*disconnected*"}
+	fmt.Printf("%v %v disconnected", name, client.address)
 }
 
 func (client *Client) deleteConnection() {

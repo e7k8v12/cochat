@@ -50,7 +50,7 @@ func getMessages(conn net.Conn) {
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		text := scanner.Text()
-		fmt.Print(text)
+		fmt.Println(text)
 	}
 	fmt.Println("Server lost.")
 	os.Exit(0)
