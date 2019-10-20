@@ -93,7 +93,7 @@ func (client *Client) handleConnection(conn net.Conn) {
 		text := scanner.Text()
 
 		if strings.ToLower(text) == "exit" {
-			conn.Write([]byte("Bye\n\r"))
+			conn.Write([]byte("Bye\n"))
 			fmt.Println(name, "disconnected")
 			client.deleteConnection()
 			brChan <- Message{name: name, message: "*client disconnected*"}
