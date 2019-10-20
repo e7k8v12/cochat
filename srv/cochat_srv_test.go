@@ -49,6 +49,7 @@ func TestStopServerMessage(t *testing.T) {
 	}
 
 	listener.Close()
+	time.Sleep(3 * time.Second)
 
 	_, err = client1.GetMessage()
 	if err != nil {
@@ -72,7 +73,6 @@ Got:
 %v`, mess1, mess2)
 	}
 
-	listener.Close()
 	prepareForNextTest()
 }
 
@@ -106,6 +106,10 @@ func TestNotBlockingMessage(t *testing.T) {
 		t.Errorf("Expect '"+client1.name+":\thello', got %v\n", mess)
 	}
 
+	_, err = client1.GetMessage()
+	if err != nil {
+		panic(err)
+	}
 	_, err = client2.GetMessage()
 	if err != nil {
 		panic(err)
@@ -177,7 +181,6 @@ Got:
 `, mess1, mess2, mess3)
 	}
 
-	time.Sleep(time.Second)
 	listener.Close()
 	prepareForNextTest()
 }
@@ -200,7 +203,6 @@ func makeServer(port string) net.Listener {
 	}
 	go sendAll()
 	wg.Add(1)
-
 	go MainLoop(listener)
 	return listener
 }
