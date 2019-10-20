@@ -21,7 +21,6 @@ func main() {
 	login, err := reader.ReadString('\n')
 	if err != nil {
 		panic(err)
-
 	}
 
 	conn, err := net.Dial("tcp", *srvIp+":"+*srvPort)
@@ -35,25 +34,24 @@ func main() {
 	conn.Write([]byte("login:" + login))
 
 	go getMessages(conn)
-
+	login = strings.TrimSpace(login)
 	for {
 		mess, _ := reader.ReadString('\n')
 		conn.Write([]byte(mess))
-		if strings.ToLower(mess) == "exit" {
+		if strings.TrimSpace(strings.ToLower(mess)) == "exit" {
 			conn.Close()
 			fmt.Print("Client closed\n")
 			break
 		}
 	}
-
 }
 
 func getMessages(conn net.Conn) {
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		text := scanner.Text()
-		fmt.Println(text)
+		fmt.Print(text)
 	}
-	fmt.Println("Client lost.")
-
+	fmt.Println("Server lost.")
+	os.Exit(0)
 }
