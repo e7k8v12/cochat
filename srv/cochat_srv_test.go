@@ -1,9 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"math/rand"
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -13,13 +14,9 @@ import (
 func TestGetHelloMessage(t *testing.T) {
 	port := "8080"
 	listener := makeServer(port)
-
 	client := CreateClient("eugene", port)
-
 	client.SendMessage("hello\n")
-
 	mess := client.GetMessage()
-
 	if mess != client.name+":\thello" {
 		t.Errorf("Expect '"+client.name+":\thello', got %v\n", mess)
 	}
@@ -38,7 +35,7 @@ func TestStopServerMessage(t *testing.T) {
 	listener.Close()
 
 	//skip message about client2 connection
-	client1.GetMessage()
+	//client1.GetMessage()
 
 	mess1 := client1.GetMessage()
 	mess2 := client2.GetMessage()
@@ -78,7 +75,7 @@ func TestNotBlockingMessage(t *testing.T) {
 	wgMainLoop.Wait()
 }
 
-// Two clients send messages, third receives them in send order
+// Three clients send messages, third receives them in send order
 func TestMessageOrder(t *testing.T) {
 	port := "8083"
 	listener := makeServer(port)
@@ -92,6 +89,15 @@ func TestMessageOrder(t *testing.T) {
 	client2.SendMessage("hello from eugene2\n")
 	time.Sleep(time.Microsecond)
 	client3.SendMessage("hello from eugene3\n")
+	time.Sleep(time.Microsecond)
+
+	//client1.GetMessage()
+	//client1.GetMessage()
+	//client1.GetMessage()
+	//
+	//client2.GetMessage()
+	//client2.GetMessage()
+	//client2.GetMessage()
 
 	mess1 := client3.GetMessage()
 	fmt.Printf("GOT MESS1, %v\n", mess1)
@@ -114,16 +120,70 @@ Got:
 	message 3: '%v'
 `, mess1, mess2, mess3)
 	}
-	fmt.Print("TEST PASS\n")
 
-	//client1.GetMessage()
-	//client1.GetMessage()
-	//client1.GetMessage()
-	//
-	//client2.GetMessage()
-	//client2.GetMessage()
-	//client2.GetMessage()
+	listener.Close()
+	wgMainLoop.Wait()
+}
 
+// Two clients send messages, third receives them in send order
+func TestMessageOrder2Mess(t *testing.T) {
+	port := "8083"
+	listener := makeServer(port)
+
+	client1 := CreateClient("eugene1", port)
+
+	client1.SendMessage("hello1 from eugene1\n")
+	time.Sleep(time.Microsecond)
+	client1.SendMessage("hello2 from eugene1\n")
+
+	mess1 := client1.GetMessage()
+	fmt.Printf("GOT MESS1, %v\n", mess1)
+	mess2 := client1.GetMessage()
+	fmt.Printf("GOT MESS2, %v\n", mess2)
+
+	if !(mess1 == (client1.name+":\thello1 from eugene1") &&
+		mess2 == (client1.name+":\thello2 from eugene1")) {
+		t.Errorf(`
+	Expect:
+		message 1: '`+client1.name+`:	hello1 from eugene1'
+		message 2: '`+client1.name+`:	hello2 from eugene1'
+	Got:
+		message 1: '%v'
+		message 2: '%v'
+	`, mess1, mess2)
+	}
+
+	listener.Close()
+	wgMainLoop.Wait()
+}
+
+//Connect 1000 clients, send from random client, read from random client
+func TestCreate1000Clients(t *testing.T) {
+	port := "8080"
+	listener := makeServer(port)
+	clients := make([]*Client, 1000)
+
+	for i := 0; i < 1000; i++ {
+		clients[i] = CreateClient("eugene"+strconv.Itoa(i), port)
+	}
+
+	rand.Seed(time.Now().Unix())
+	outCln := rand.Intn(1000)
+	inCln1 := rand.Intn(1000)
+	inCln2 := rand.Intn(1000)
+
+	clients[outCln].SendMessage("hello\n")
+	mess1 := clients[inCln1].GetMessage()
+	mess2 := clients[inCln2].GetMessage()
+	if !(mess1 == clients[outCln].name+":\thello" && mess2 == clients[outCln].name+":\thello") {
+		t.Errorf(`
+Expect:
+`+clients[outCln].name+`:	hello
+`+clients[outCln].name+`:	hello
+Got:
+%v
+%v`, mess1, mess2)
+	}
 	listener.Close()
 	wgMainLoop.Wait()
 }
@@ -156,7 +216,7 @@ func CreateClient(login string, port string) *Client {
 	}
 
 	//skip *connected* message
-	client.GetMessage()
+	//client.GetMessage()
 
 	return client
 }
@@ -170,9 +230,29 @@ func (client *Client) SendMessage(mess string) {
 
 func (client *Client) GetMessage() string {
 	mess := ""
-	scanner := bufio.NewScanner(client.conn)
-	if scanner.Scan() {
-		mess = scanner.Text()
+
+	//зависает
+	//scanner := bufio.NewScanner(client.conn)
+	//if scanner.Scan() {
+	//	mess = scanner.Text()
+	//}
+
+	//зависает
+	//reader := bufio.NewReader(client.conn)
+	//mess, err := reader.ReadString('\n')
+	//if err != nil {
+	//	panic(err)
+	//}
+
+	//работает
+	buf := make([]byte, 1)
+	for string(buf) != "\n" {
+		_, err := client.conn.Read(buf)
+		if err != nil {
+			panic(err)
+		}
+		mess += string(buf)
 	}
-	return mess
+
+	return mess[:len(mess)-1]
 }

@@ -13,16 +13,20 @@ func main() {
 
 	srvIp := flag.String("ip", "127.0.0.1", "IP address of a server")
 	srvPort := flag.String("port", "8080", "Port of a server")
+	login := flag.String("login", "", "Login")
 	flag.Parse()
 
 	reader := bufio.NewReader(os.Stdin)
-
-	fmt.Print("login: ")
-	login, err := reader.ReadString('\n')
-	if err != nil {
-		panic(err)
+	if *login == "" {
+		fmt.Print("login: ")
+		inputLogin, err := reader.ReadString('\n')
+		if err != nil {
+			panic(err)
+		}
+		*login = inputLogin
+	} else {
+		*login = *login + "\n"
 	}
-
 	conn, err := net.Dial("tcp", *srvIp+":"+*srvPort)
 	if err != nil {
 		panic(err)
@@ -31,10 +35,10 @@ func main() {
 	fmt.Printf("Connected to %v:%v\n", *srvIp, *srvPort)
 	defer conn.Close()
 
-	conn.Write([]byte("login:" + login))
+	conn.Write([]byte("login:" + *login))
 
 	go getMessages(conn)
-	login = strings.TrimSpace(login)
+	*login = strings.TrimSpace(*login)
 	for {
 		mess, _ := reader.ReadString('\n')
 		conn.Write([]byte(mess))

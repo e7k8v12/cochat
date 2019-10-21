@@ -84,9 +84,10 @@ func sendAll() {
 				mess := <-client.sendChan
 				//fmt.Printf("\tSending to %v message %v\n", client.name, &mess)
 				_, err := fmt.Fprintf(client.conn, "%v\n", &mess)
+				//_, err := client.conn.Write([]byte(mess.String() + "\n"))
 				if err != nil {
 					client.deleteConnection()
-					fmt.Printf("Error send to %v message %v\n", client.name, &mess)
+					//fmt.Printf("Error send to %v message %v\n", client.name, &mess)
 				}
 				//fmt.Printf("\t\tStop send to %v message %v\n", client.name, &mess)
 				wgSendMess.Done()
@@ -112,24 +113,25 @@ func (client *Client) handleConnection(conn net.Conn, listener net.Listener) {
 	defer conn.Close()
 	client.name = name
 	fmt.Printf("%v %v connected\n", name, addr)
-	brChan <- Message{name, "*connected*"}
+	//brChan <- Message{name, "*connected*"}
 
 	for scanner.Scan() {
 		text := scanner.Text()
 
-		if strings.ToLower(text) == "exit" {
+		lowerText := strings.ToLower(text)
+		if lowerText == "exit" {
 			conn.Write([]byte("Bye\n"))
 			fmt.Println(name, "disconnected")
 			client.deleteConnection()
-			brChan <- Message{name: name, message: "*client disconnected*"}
+			//brChan <- Message{name: name, message: "*client disconnected*"}
 			break
-		} else if strings.ToLower(text) == "#count" {
+		} else if lowerText == "#count" {
 			muConnections.Lock()
 			fmt.Fprintf(conn, "%v\n", len(connections))
 			muConnections.Unlock()
-		} else if strings.ToLower(text) == "#quit_server" {
+		} else if lowerText == "#quit_server" {
 			listener.Close()
-		} else if strings.ToLower(text) == "#list" {
+		} else if lowerText == "#list" {
 			mess := ""
 			muConnections.Lock()
 			for _, cli := range connections {
@@ -143,8 +145,8 @@ func (client *Client) handleConnection(conn net.Conn, listener net.Listener) {
 		}
 
 	}
-	brChan <- Message{name, "*disconnected*"}
-	fmt.Printf("%v %v disconnected", name, client.address)
+	//brChan <- Message{name, "*disconnected*"}
+	fmt.Printf("%v %v disconnected\n", name, client.address)
 }
 
 func (client *Client) deleteConnection() {
