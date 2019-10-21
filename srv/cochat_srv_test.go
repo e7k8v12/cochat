@@ -229,7 +229,7 @@ func (client *Client) SendMessage(mess string) {
 }
 
 func (client *Client) GetMessage() string {
-	mess := ""
+	//mess := ""
 
 	////not responding
 	//scanner := bufio.NewScanner(client.conn)
@@ -245,14 +245,15 @@ func (client *Client) GetMessage() string {
 	//}
 
 	//this works
-	buf := make([]byte, 1)
-	for string(buf) != "\n" {
-		_, err := client.conn.Read(buf)
+	buf1 := make([]byte, 1)
+	buf := make([]byte, 0, 1024)
+	for string(buf1) != "\n" {
+		_, err := client.conn.Read(buf1)
 		if err != nil {
 			panic(err)
 		}
-		mess += string(buf)
+		buf = append(buf, buf1...)
 	}
-
-	return mess[:len(mess)-1]
+	mess := string(buf[:len(buf)-1])
+	return mess
 }
