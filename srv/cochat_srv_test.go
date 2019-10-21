@@ -231,20 +231,20 @@ func (client *Client) SendMessage(mess string) {
 func (client *Client) GetMessage() string {
 	mess := ""
 
-	//зависает
+	////not responding
 	//scanner := bufio.NewScanner(client.conn)
 	//if scanner.Scan() {
 	//	mess = scanner.Text()
 	//}
 
-	//зависает
+	////not responding
 	//reader := bufio.NewReader(client.conn)
 	//mess, err := reader.ReadString('\n')
 	//if err != nil {
 	//	panic(err)
 	//}
 
-	//работает
+	//this works
 	buf := make([]byte, 1)
 	for string(buf) != "\n" {
 		_, err := client.conn.Read(buf)
