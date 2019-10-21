@@ -2,9 +2,9 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"net"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
@@ -14,24 +14,17 @@ func TestGetHelloMessage(t *testing.T) {
 	port := "8080"
 	listener := makeServer(port)
 
-	client, err := CreateClient("eugene", port)
-	if err != nil {
-		panic(err)
-	}
-	err = client.SendMessage("hello\n")
-	if err != nil {
-		panic(err)
-	}
-	mess, err := client.GetMessage()
-	if err != nil {
-		panic(err)
-	}
+	client := CreateClient("eugene", port)
+
+	client.SendMessage("hello\n")
+
+	mess := client.GetMessage()
+
 	if mess != client.name+":\thello" {
 		t.Errorf("Expect '"+client.name+":\thello', got %v\n", mess)
 	}
-
 	listener.Close()
-	prepareForNextTest()
+	wgMainLoop.Wait()
 }
 
 //Test server sends disconnecting message when servers stops
@@ -39,30 +32,17 @@ func TestStopServerMessage(t *testing.T) {
 	port := "8081"
 	listener := makeServer(port)
 
-	client1, err := CreateClient("eugene1", port)
-	if err != nil {
-		panic(err)
-	}
-	client2, err := CreateClient("eugene2", port)
-	if err != nil {
-		panic(err)
-	}
+	client1 := CreateClient("eugene1", port)
+	client2 := CreateClient("eugene2", port)
 
 	listener.Close()
-	time.Sleep(3 * time.Second)
 
-	_, err = client1.GetMessage()
-	if err != nil {
-		panic(err)
-	}
-	mess1, err := client1.GetMessage()
-	if err != nil {
-		panic(err)
-	}
-	mess2, err := client2.GetMessage()
-	if err != nil {
-		panic(err)
-	}
+	//skip message about client2 connection
+	client1.GetMessage()
+
+	mess1 := client1.GetMessage()
+	mess2 := client2.GetMessage()
+
 	if !(mess1 == "Server:\tServer shut down." && mess2 == "Server:\tServer shut down.") {
 		t.Errorf(`
 Expect:
@@ -72,8 +52,6 @@ Got:
 %v
 %v`, mess1, mess2)
 	}
-
-	prepareForNextTest()
 }
 
 //Message receives first on 3rd client, 1st or 2nd does not block it
@@ -81,42 +59,23 @@ func TestNotBlockingMessage(t *testing.T) {
 	port := "8082"
 	listener := makeServer(port)
 
-	client1, err := CreateClient("eugene1", port)
-	if err != nil {
-		panic(err)
-	}
-	client2, err := CreateClient("eugene2", port)
-	if err != nil {
-		panic(err)
-	}
-	client3, err := CreateClient("eugene3", port)
-	if err != nil {
-		panic(err)
-	}
+	client1 := CreateClient("eugene1", port)
+	client2 := CreateClient("eugene2", port)
+	client3 := CreateClient("eugene3", port)
 
-	err = client1.SendMessage("hello\n")
-	if err != nil {
-		panic(err)
-	}
-	mess, err := client3.GetMessage()
-	if err != nil {
-		panic(err)
-	}
+	client1.SendMessage("hello\n")
+
+	mess := client3.GetMessage()
+
 	if mess != client1.name+":\thello" {
 		t.Errorf("Expect '"+client1.name+":\thello', got %v\n", mess)
 	}
 
-	_, err = client1.GetMessage()
-	if err != nil {
-		panic(err)
-	}
-	_, err = client2.GetMessage()
-	if err != nil {
-		panic(err)
-	}
+	client1.GetMessage()
+	client2.GetMessage()
 
 	listener.Close()
-	prepareForNextTest()
+	wgMainLoop.Wait()
 }
 
 // Two clients send messages, third receives them in send order
@@ -124,47 +83,22 @@ func TestMessageOrder(t *testing.T) {
 	port := "8083"
 	listener := makeServer(port)
 
-	client1, err := CreateClient("eugene1", port)
-	if err != nil {
-		panic(err)
-	}
-	client2, err := CreateClient("eugene2", port)
-	if err != nil {
-		panic(err)
-	}
-	client3, err := CreateClient("eugene3", port)
-	if err != nil {
-		panic(err)
-	}
+	client1 := CreateClient("eugene1", port)
+	client2 := CreateClient("eugene2", port)
+	client3 := CreateClient("eugene3", port)
 
-	err = client1.SendMessage("hello from eugene1\n")
-	if err != nil {
-		panic(err)
-	}
+	client1.SendMessage("hello from eugene1\n")
 	time.Sleep(time.Microsecond)
-	err = client2.SendMessage("hello from eugene2\n")
-	if err != nil {
-		panic(err)
-	}
+	client2.SendMessage("hello from eugene2\n")
 	time.Sleep(time.Microsecond)
-	err = client3.SendMessage("hello from eugene3\n")
-	if err != nil {
-		panic(err)
-	}
-	mess1, err := client3.GetMessage()
-	if err != nil {
-		panic(err)
-	}
+	client3.SendMessage("hello from eugene3\n")
 
-	mess2, err := client3.GetMessage()
-	if err != nil {
-		panic(err)
-	}
-
-	mess3, err := client3.GetMessage()
-	if err != nil {
-		panic(err)
-	}
+	mess1 := client3.GetMessage()
+	fmt.Printf("GOT MESS1, %v\n", mess1)
+	mess2 := client3.GetMessage()
+	fmt.Printf("GOT MESS2, %v\n", mess2)
+	mess3 := client3.GetMessage()
+	fmt.Printf("GOT MESS3, %v\n", mess3)
 
 	if !(mess1 == (client1.name+":\thello from eugene1") &&
 		mess2 == (client2.name+":\thello from eugene2") &&
@@ -180,20 +114,18 @@ Got:
 	message 3: '%v'
 `, mess1, mess2, mess3)
 	}
+	fmt.Print("TEST PASS\n")
+
+	//client1.GetMessage()
+	//client1.GetMessage()
+	//client1.GetMessage()
+	//
+	//client2.GetMessage()
+	//client2.GetMessage()
+	//client2.GetMessage()
 
 	listener.Close()
-	prepareForNextTest()
-}
-
-func prepareForNextTest() {
-	for c := range connections {
-		muConnections.Lock()
-		delete(connections, c)
-		muConnections.Unlock()
-	}
-	close(brChan)
-	brChan = make(chan Message, 10000)
-	wg = sync.WaitGroup{}
+	wgMainLoop.Wait()
 }
 
 func makeServer(port string) net.Listener {
@@ -202,16 +134,16 @@ func makeServer(port string) net.Listener {
 		panic(err)
 	}
 	go sendAll()
-	wg.Add(1)
+	wgMainLoop.Add(1)
 	go MainLoop(listener)
 	return listener
 }
 
-func CreateClient(login string, port string) (*Client, error) {
+func CreateClient(login string, port string) *Client {
 
 	conn, err := net.Dial("tcp", ":"+port)
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	client := new(Client)
 	client.address = conn.RemoteAddr().String()
@@ -220,26 +152,27 @@ func CreateClient(login string, port string) (*Client, error) {
 
 	_, err = conn.Write([]byte("login:" + login + "\n"))
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
-	_, err = client.GetMessage()
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
+	//skip *connected* message
+	client.GetMessage()
+
+	return client
 }
 
-func (client *Client) SendMessage(mess string) error {
+func (client *Client) SendMessage(mess string) {
 	_, err := client.conn.Write([]byte(mess))
-	return err
+	if err != nil {
+		panic(err)
+	}
 }
 
-func (client *Client) GetMessage() (string, error) {
+func (client *Client) GetMessage() string {
 	mess := ""
 	scanner := bufio.NewScanner(client.conn)
 	if scanner.Scan() {
 		mess = scanner.Text()
 	}
-	return mess, nil
+	return mess
 }

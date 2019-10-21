@@ -7,7 +7,6 @@ import (
 	"net"
 	"strings"
 	"sync"
-	"time"
 )
 
 type Message struct {
@@ -25,7 +24,8 @@ var (
 	muConnections = sync.Mutex{}
 	connections   = make(map[string]*Client)
 	brChan        = make(chan Message, 10000)
-	wg            = sync.WaitGroup{}
+	wgMainLoop    = sync.WaitGroup{}
+	wgSendMess    = sync.WaitGroup{}
 )
 
 func (mess *Message) String() string {
@@ -41,9 +41,9 @@ func main() {
 	}
 	fmt.Printf("Console chat server started at %v\n", listener.Addr().String())
 	go sendAll()
-	wg.Add(1)
+	wgMainLoop.Add(1)
 	go MainLoop(listener)
-	wg.Wait()
+	wgMainLoop.Wait()
 }
 
 func MainLoop(listener net.Listener) {
@@ -55,9 +55,9 @@ func MainLoop(listener net.Listener) {
 				name:    "Server",
 				message: "Server shut down.",
 			}
-			time.Sleep(time.Second)
-			fmt.Printf("after accept: %v\n", err)
-			wg.Done()
+			wgSendMess.Wait()
+			fmt.Printf("Connection closed. Accept error: %v\n", err)
+			wgMainLoop.Done()
 			break
 		}
 		connectionAddress := conn.RemoteAddr().String()
@@ -77,15 +77,19 @@ func sendAll() {
 	for mess := range brChan {
 		muConnections.Lock()
 		for _, client := range connections {
-			wg.Add(1)
+			wgSendMess.Add(1)
 			client.sendChan <- mess
+			//fmt.Printf("Start send to %v message %v\n", client.name, &mess)
 			go func(client *Client) {
 				mess := <-client.sendChan
+				//fmt.Printf("\tSending to %v message %v\n", client.name, &mess)
 				_, err := fmt.Fprintf(client.conn, "%v\n", &mess)
 				if err != nil {
 					client.deleteConnection()
+					fmt.Printf("Error send to %v message %v\n", client.name, &mess)
 				}
-				wg.Done()
+				//fmt.Printf("\t\tStop send to %v message %v\n", client.name, &mess)
+				wgSendMess.Done()
 			}(client)
 		}
 		muConnections.Unlock()
