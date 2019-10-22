@@ -247,7 +247,8 @@ func (client *Client) GetMessage() string {
 	//this works
 	buf1 := make([]byte, 1)
 	buf := make([]byte, 0, 1024)
-	for string(buf1) != "\n" {
+	lineBreak := byte('\n')
+	for buf1[0] != lineBreak {
 		_, err := client.conn.Read(buf1)
 		if err != nil {
 			panic(err)
