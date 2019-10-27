@@ -42,11 +42,11 @@ func main() {
 	for {
 		mess, _ := reader.ReadString('\n')
 		conn.Write([]byte(mess))
-		if strings.TrimSpace(strings.ToLower(mess)) == "exit" {
-			conn.Close()
-			fmt.Print("Client closed\n")
-			break
-		}
+		//if strings.TrimSpace(strings.ToLower(mess)) == "exit" {
+		//	conn.Close()
+		//	fmt.Print("Client closed\n")
+		//	break
+		//}
 	}
 }
 
@@ -54,6 +54,9 @@ func getMessages(conn net.Conn) {
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		text := scanner.Text()
+		if text == "##test message##" {
+			continue
+		}
 		fmt.Println(text)
 	}
 	fmt.Println("Server lost.")
