@@ -6,34 +6,33 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
 
 //Test send and receive message
 func TestGetHelloMessage(t *testing.T) {
-	port := "8080"
-	listener, globals := makeServer(port)
-	client := CreateClient("eugene", port)
-	client.SendMessage("hello\n")
+	port := "8081"
+	server := makeServer(port)
+	client := createClient("eugene", port)
+	client.sendMessage("hello\n")
 	mess := client.GetMessage()
 	if mess != client.name+":\thello" {
 		t.Errorf("Expect '"+client.name+":\thello', got %v\n", mess)
 	}
-	listener.Close()
-	globals.wgMainLoop.Wait()
+	server.listener.Close()
+	server.wgListenConnections.Wait()
 }
 
 //Test server sends disconnecting message when servers stops
 func TestStopServerMessage(t *testing.T) {
-	port := "8081"
-	listener, globals := makeServer(port)
+	port := "8082"
+	server := makeServer(port)
 
-	client1 := CreateClient("eugene1", port)
-	client2 := CreateClient("eugene2", port)
+	client1 := createClient("eugene1", port)
+	client2 := createClient("eugene2", port)
 
-	listener.Close()
+	server.listener.Close()
 
 	//skip message about client2 connection
 	//client1.GetMessage()
@@ -51,19 +50,21 @@ Got:
 %v`, mess1, mess2)
 	}
 
-	globals.wgMainLoop.Wait()
+	server.wgListenConnections.Wait()
 }
 
 //Message receives first on 3rd client, 1st or 2nd does not block it
 func TestNotBlockingMessage(t *testing.T) {
-	port := "8082"
-	listener, globals := makeServer(port)
+	port := "8083"
+	server := makeServer(port)
 
-	client1 := CreateClient("eugene1", port)
-	client2 := CreateClient("eugene2", port)
-	client3 := CreateClient("eugene3", port)
+	client1 := createClient("eugene1", port)
+	client2 := createClient("eugene2", port)
+	client3 := createClient("eugene3", port)
 
-	client1.SendMessage("hello\n")
+	time.Sleep(time.Millisecond)
+
+	client1.sendMessage("hello\n")
 
 	mess := client3.GetMessage()
 
@@ -74,24 +75,24 @@ func TestNotBlockingMessage(t *testing.T) {
 	client1.GetMessage()
 	client2.GetMessage()
 
-	listener.Close()
-	globals.wgMainLoop.Wait()
+	server.listener.Close()
+	server.wgListenConnections.Wait()
 }
 
 // Three clients send messages, third receives them in send order
 func TestMessageOrder(t *testing.T) {
-	port := "8083"
-	listener, globals := makeServer(port)
+	port := "8084"
+	server := makeServer(port)
 
-	client1 := CreateClient("eugene1", port)
-	client2 := CreateClient("eugene2", port)
-	client3 := CreateClient("eugene3", port)
+	client1 := createClient("eugene1", port)
+	client2 := createClient("eugene2", port)
+	client3 := createClient("eugene3", port)
 
-	client1.SendMessage("hello from eugene1\n")
+	client1.sendMessage("hello from eugene1\n")
 	time.Sleep(time.Millisecond)
-	client2.SendMessage("hello from eugene2\n")
+	client2.sendMessage("hello from eugene2\n")
 	time.Sleep(time.Millisecond)
-	client3.SendMessage("hello from eugene3\n")
+	client3.sendMessage("hello from eugene3\n")
 	time.Sleep(time.Millisecond)
 
 	mess1 := client3.GetMessage()
@@ -116,20 +117,20 @@ Got:
 `, mess1, mess2, mess3)
 	}
 
-	listener.Close()
-	globals.wgMainLoop.Wait()
+	server.listener.Close()
+	server.wgListenConnections.Wait()
 }
 
 // Two clients send messages, third receives them in send order
 func TestMessageOrder2Mess(t *testing.T) {
-	port := "8084"
-	listener, globals := makeServer(port)
+	port := "8085"
+	server := makeServer(port)
 
-	client1 := CreateClient("eugene1", port)
+	client1 := createClient("eugene1", port)
 
-	client1.SendMessage("hello1 from eugene1\n")
+	client1.sendMessage("hello1 from eugene1\n")
 	time.Sleep(time.Microsecond)
-	client1.SendMessage("hello2 from eugene1\n")
+	client1.sendMessage("hello2 from eugene1\n")
 
 	mess1 := client1.GetMessage()
 	fmt.Printf("GOT MESS1, %v\n", mess1)
@@ -148,18 +149,18 @@ func TestMessageOrder2Mess(t *testing.T) {
 	`, mess1, mess2)
 	}
 
-	listener.Close()
-	globals.wgMainLoop.Wait()
+	server.listener.Close()
+	server.wgListenConnections.Wait()
 }
 
 //Connect 1000 clients, send from random client, read from random client
 func TestCreate1000Clients(t *testing.T) {
-	port := "8085"
-	listener, globals := makeServer(port)
+	port := "8086"
+	server := makeServer(port)
 	clients := make([]*Client, 1000)
 
 	for i := 0; i < 1000; i++ {
-		clients[i] = CreateClient("eugene"+strconv.Itoa(i), port)
+		clients[i] = createClient("eugene"+strconv.Itoa(i), port)
 	}
 
 	rand.Seed(time.Now().Unix())
@@ -167,7 +168,7 @@ func TestCreate1000Clients(t *testing.T) {
 	inCln1 := rand.Intn(1000)
 	inCln2 := rand.Intn(1000)
 
-	clients[outCln].SendMessage("hello\n")
+	clients[outCln].sendMessage("hello\n")
 	mess1 := clients[inCln1].GetMessage()
 	mess2 := clients[inCln2].GetMessage()
 	if !(mess1 == clients[outCln].name+":\thello" && mess2 == clients[outCln].name+":\thello") {
@@ -179,33 +180,68 @@ Got:
 %v
 %v`, mess1, mess2)
 	}
-	listener.Close()
-	globals.wgMainLoop.Wait()
+	server.listener.Close()
+	server.wgListenConnections.Wait()
 }
 
-func makeServer(port string) (net.Listener, *Globals) {
-	globals := &Globals{
-		muConnections: sync.Mutex{},
-		connections:   make(map[string]*Client),
-		brChan:        make(chan Message, 10000),
-		wgMainLoop:    sync.WaitGroup{},
-		wgSendMess:    sync.WaitGroup{},
-		db:            nil,
+//Compare sent message with DB history
+func TestDBHistory(t *testing.T) {
+	port := "8087"
+	server := makeServer(port)
+	server.database.connect("127.0.0.1", "3306", "cochatdb_test1")
+	defer func() {
+		if server.database != nil && server.database.db != nil {
+			err := server.database.db.Close()
+			printError(err)
+		}
+	}()
+
+	client := createClient("eugene", port)
+	client.sendMessage("hello\n")
+	time.Sleep(time.Millisecond)
+	client.sendMessage("how are you?\n")
+	time.Sleep(time.Millisecond)
+	client.sendMessage("#history\n")
+	time.Sleep(time.Millisecond)
+	client.GetMessage()
+	client.GetMessage()
+	history1 := client.GetMessage()
+	history2 := client.GetMessage()
+
+	//history := server.database.getHistory()
+
+	if !(history1 == client.name+":\thello" && history2 == client.name+":\thow are you?") {
+		t.Errorf(`
+Expect:
+`+client.name+`:	hello
+`+client.name+`:	how are you?
+Got:
+%v
+%v`, history1, history2)
 	}
 
-	listener, err := CreateServer(port)
+	server.listener.Close()
+	server.wgListenConnections.Wait()
+
+	time.Sleep(time.Millisecond)
+	server.database.drop()
+}
+
+func makeServer(port string) *Server {
+	server := &Server{}
+	err := server.initServer(port)
 	if err != nil {
 		panic(err)
 	}
-	//db = connectDB()
-	//initDB()
-	go sendAll(globals)
-	globals.wgMainLoop.Add(1)
-	go MainLoop(globals, listener)
-	return listener, globals
+	//database = connect()
+	//init()
+	go server.messageForwarding()
+	server.wgListenConnections.Add(1)
+	go server.listenForNewConnections()
+	return server
 }
 
-func CreateClient(login string, port string) *Client {
+func createClient(login string, port string) *Client {
 
 	conn, err := net.Dial("tcp", ":"+port)
 	if err != nil {
@@ -227,8 +263,8 @@ func CreateClient(login string, port string) *Client {
 	return client
 }
 
-func (client *Client) SendMessage(mess string) {
-	_, err := client.conn.Write([]byte(mess))
+func (client *Client) sendMessage(mess string) {
+	err := client.Write(mess)
 	if err != nil {
 		panic(err)
 	}
