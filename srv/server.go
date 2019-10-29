@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -12,15 +15,17 @@ type Server struct {
 	connections         map[string]*Client
 	brChan              chan Message
 	wgListenConnections sync.WaitGroup
-	wgSendMess          sync.WaitGroup
 	database            *Database
 	ticker              *time.Ticker
 	listener            net.Listener
+	signals             chan os.Signal
+	wgBroadcastSend     sync.WaitGroup
 }
 
 func (server *Server) deleteConnection(client *Client) {
 	server.muConnections.Lock()
 	client.conn.Close()
+	close(client.sendChan)
 	delete(server.connections, client.address)
 	server.muConnections.Unlock()
 }
@@ -34,8 +39,8 @@ func (server *Server) listenForNewConnections() {
 				name:    "Server",
 				message: "Server shut down.",
 			}
-			server.wgSendMess.Wait()
 			fmt.Printf("Connection closed. Accept error: %v\n", err)
+			server.wgBroadcastSend.Wait()
 			server.wgListenConnections.Done()
 			break
 		}
@@ -52,9 +57,10 @@ func (server *Server) initServer(srvPort string) error {
 	server.connections = make(map[string]*Client)
 	server.brChan = make(chan Message, 10000)
 	server.wgListenConnections = sync.WaitGroup{}
-	server.wgSendMess = sync.WaitGroup{}
 	server.database = &Database{}
 	server.ticker = time.NewTicker(time.Second * 5)
+	server.signals = make(chan os.Signal, 1)
+	signal.Notify(server.signals, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	listener, err := net.Listen("tcp", ":"+srvPort)
 	server.listener = listener
@@ -66,18 +72,10 @@ func (server *Server) messageForwarding() {
 	for mess := range server.brChan {
 		server.muConnections.Lock()
 		for _, client := range server.connections {
-			server.wgSendMess.Add(1)
+			server.wgBroadcastSend.Add(1)
 			go func(client *Client, mess Message) {
 				client.sendChan <- mess
 			}(client, mess)
-			go func(client *Client) {
-				mess := <-client.sendChan
-				err := client.Write(mess.String() + "\n")
-				if err != nil {
-					printError(err)
-				}
-				server.wgSendMess.Done()
-			}(client)
 		}
 		server.muConnections.Unlock()
 	}
@@ -96,4 +94,8 @@ func (server *Server) deleteBrokenConnections() {
 		}
 		server.muConnections.Unlock()
 	}
+}
+func (server *Server) catchSignal() {
+	<-server.signals
+	server.listener.Close()
 }

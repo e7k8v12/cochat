@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -15,7 +16,7 @@ func TestGetHelloMessage(t *testing.T) {
 	port := "8081"
 	server := makeServer(port)
 	client := createClient("eugene", port)
-	client.sendMessage("hello\n")
+	client.sendMessage("hello")
 	mess := client.GetMessage()
 	if mess != client.name+":\thello" {
 		t.Errorf("Expect '"+client.name+":\thello', got %v\n", mess)
@@ -24,7 +25,7 @@ func TestGetHelloMessage(t *testing.T) {
 	server.wgListenConnections.Wait()
 }
 
-//Test server sends disconnecting message when servers stops
+//Test server sends disconnecting message when server stops
 func TestStopServerMessage(t *testing.T) {
 	port := "8082"
 	server := makeServer(port)
@@ -32,10 +33,7 @@ func TestStopServerMessage(t *testing.T) {
 	client1 := createClient("eugene1", port)
 	client2 := createClient("eugene2", port)
 
-	server.listener.Close()
-
-	//skip message about client2 connection
-	//client1.GetMessage()
+	server.signals <- syscall.SIGTERM
 
 	mess1 := client1.GetMessage()
 	mess2 := client2.GetMessage()
@@ -64,7 +62,7 @@ func TestNotBlockingMessage(t *testing.T) {
 
 	time.Sleep(time.Millisecond)
 
-	client1.sendMessage("hello\n")
+	client1.sendMessage("hello")
 
 	mess := client3.GetMessage()
 
@@ -88,11 +86,11 @@ func TestMessageOrder(t *testing.T) {
 	client2 := createClient("eugene2", port)
 	client3 := createClient("eugene3", port)
 
-	client1.sendMessage("hello from eugene1\n")
+	client1.sendMessage("hello from eugene1")
 	time.Sleep(time.Millisecond)
-	client2.sendMessage("hello from eugene2\n")
+	client2.sendMessage("hello from eugene2")
 	time.Sleep(time.Millisecond)
-	client3.sendMessage("hello from eugene3\n")
+	client3.sendMessage("hello from eugene3")
 	time.Sleep(time.Millisecond)
 
 	mess1 := client3.GetMessage()
@@ -128,9 +126,9 @@ func TestMessageOrder2Mess(t *testing.T) {
 
 	client1 := createClient("eugene1", port)
 
-	client1.sendMessage("hello1 from eugene1\n")
+	client1.sendMessage("hello1 from eugene1")
 	time.Sleep(time.Microsecond)
-	client1.sendMessage("hello2 from eugene1\n")
+	client1.sendMessage("hello2 from eugene1")
 
 	mess1 := client1.GetMessage()
 	fmt.Printf("GOT MESS1, %v\n", mess1)
@@ -168,7 +166,7 @@ func TestCreate1000Clients(t *testing.T) {
 	inCln1 := rand.Intn(1000)
 	inCln2 := rand.Intn(1000)
 
-	clients[outCln].sendMessage("hello\n")
+	clients[outCln].sendMessage("hello")
 	mess1 := clients[inCln1].GetMessage()
 	mess2 := clients[inCln2].GetMessage()
 	if !(mess1 == clients[outCln].name+":\thello" && mess2 == clients[outCln].name+":\thello") {
@@ -197,11 +195,11 @@ func TestDBHistory(t *testing.T) {
 	}()
 
 	client := createClient("eugene", port)
-	client.sendMessage("hello\n")
+	client.sendMessage("hello")
 	time.Sleep(time.Millisecond)
-	client.sendMessage("how are you?\n")
+	client.sendMessage("how are you?")
 	time.Sleep(time.Millisecond)
-	client.sendMessage("#history\n")
+	client.sendMessage("#history")
 	time.Sleep(time.Millisecond)
 	client.GetMessage()
 	client.GetMessage()
@@ -233,8 +231,8 @@ func makeServer(port string) *Server {
 	if err != nil {
 		panic(err)
 	}
-	//database = connect()
-	//init()
+
+	go server.catchSignal()
 	go server.messageForwarding()
 	server.wgListenConnections.Add(1)
 	go server.listenForNewConnections()
@@ -257,7 +255,7 @@ func createClient(login string, port string) *Client {
 		panic(err)
 	}
 
-	//skip *connected* message
+	//skip history message
 	//client.GetMessage()
 
 	return client

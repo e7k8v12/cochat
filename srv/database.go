@@ -82,5 +82,8 @@ func (database *Database) getHistory() string {
 		}
 		history += *name + ":\t" + *mess + "\n"
 	}
+	if history != "" {
+		history = history[:len(history)-1]
+	}
 	return history
 }

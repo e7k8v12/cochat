@@ -19,7 +19,7 @@ type Client struct {
 
 func (client *Client) Write(mess string) error {
 	client.mu.Lock()
-	_, err := client.conn.Write([]byte(mess))
+	_, err := client.conn.Write([]byte(mess + "\n"))
 	client.mu.Unlock()
 	return err
 }
@@ -38,13 +38,17 @@ func (client *Client) handleConnection(server *Server) {
 	}()
 	client.name = name
 	client.mu = sync.Mutex{}
+
+	go client.sendFromChan(server)
+
 	fmt.Printf("%v %v connected\n", name, client.conn.RemoteAddr().String())
-	//brChan <- Message{name, "*connected*"}
 
 	history := server.database.getHistory()
-	err := client.Write(history)
-	if err != nil {
-		fmt.Println(err)
+	if history != "" {
+		err := client.Write(history)
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
 
 loopScanner:
@@ -54,29 +58,28 @@ loopScanner:
 		lowerText := strings.ToLower(text)
 		switch {
 		case lowerText == "#exit":
-			err := client.Write("Bye\n")
+			err := client.Write("Bye")
 			printError(err)
 			fmt.Println(name, "disconnected")
 			server.deleteConnection(client)
-			//brChan <- Message{name: name, message: "*client disconnected*"}
 			break loopScanner
 		case lowerText == "#count":
 			server.muConnections.Lock()
-			err = client.Write(strconv.Itoa(len(server.connections)) + "\n")
+			err := client.Write(strconv.Itoa(len(server.connections)))
 			printError(err)
 			server.muConnections.Unlock()
 		case lowerText == "#list":
 			mess := ""
 			server.muConnections.Lock()
 			for _, cli := range server.connections {
-				mess += cli.name + " " + cli.address + "\n"
+				mess += cli.name + " " + cli.address
 			}
 			server.muConnections.Unlock()
-			err = client.Write(mess)
+			err := client.Write(mess)
 			printError(err)
 		case lowerText == "#history":
 			mess := server.database.getHistory()
-			err = client.Write(mess)
+			err := client.Write(mess)
 			printError(err)
 		case text != "":
 			fmt.Printf("%v enters '%v'\n", name, text)
@@ -85,11 +88,18 @@ loopScanner:
 			server.database.addMessage(mess)
 		}
 	}
-	//brChan <- Message{name, "*disconnected*"}
 	fmt.Printf("%v %v disconnected\n", name, client.address)
 }
 
 func (client *Client) checkConnection() error {
-	err := client.Write("##test message##\n")
+	err := client.Write("##test message##")
 	return err
+}
+
+func (client *Client) sendFromChan(server *Server) {
+	for mess := range client.sendChan {
+		err := client.Write(mess.String())
+		server.wgBroadcastSend.Done()
+		printError(err)
+	}
 }

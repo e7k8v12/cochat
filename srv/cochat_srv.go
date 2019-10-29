@@ -38,6 +38,7 @@ func main() {
 
 	fmt.Printf("Console chat server started at %v\n", server.listener.Addr().String())
 
+	go server.catchSignal()
 	go server.messageForwarding()
 	go server.deleteBrokenConnections()
 
